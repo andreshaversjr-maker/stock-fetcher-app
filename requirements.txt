@@ -1,0 +1,38 @@
+rom flask import Flask, request, jsonify
+import yfinance as yf
+from datetime import datetime
+
+app = Flask(__name__)
+
+def get_real_time_price(ticker):
+stock = yf.Ticker(ticker)
+data = stock.history(period="1d")
+if data.empty:
+return {"error": f"No data found for {ticker}"}
+latest = data.iloc[-1]
+return {
+"symbol": ticker.upper(),
+"company_name": stock.info.get("longName", ticker),
+"current_price": round(latest['Close'], 2),
+"open": round(latest['Open'], 2),
+"high": round(latest['High'], 2),
+"low": round(latest['Low'], 2),
+"previous_close": round(latest['Close'], 2),
+"change_percent": round(((latest['Close'] - latest['Open']) / latest['Open']) * 100, 2),
+"volume": int(latest['Volume']),
+"market_cap": stock.info.get("marketCap"),
+"fifty_two_week_high": stock.info.get("fiftyTwoWeekHigh"),
+"fifty_two_week_low": stock.info.get("fiftyTwoWeekLow"),
+"timestamp": datetime.utcnow().isoformat() + "Z"
+}
+
+@app.route("/price", methods=["GET"])
+def price():
+ticker = request.args.get("ticker")
+if not ticker:
+return jsonify({"error": "Please provide a ticker symbol, e.g., ?ticker=AAPL"}), 400
+result = get_real_time_price(ticker)
+return jsonify(result)
+
+if __name__ == "__main__":
+app.run(host="0.0.0.0", port=8080)
