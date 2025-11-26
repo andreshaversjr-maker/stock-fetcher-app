@@ -1,56 +1,51 @@
 from flask import Flask, request, jsonify
-import yfinance as yf
-from datetime import datetime
+from alpha_vantage.timeseries import TimeSeries
 import os
+import pandas as pd
 
 app = Flask(__name__)
 
-@app.route("/")
-def home():
-return "Stock Fetcher is running!"
+# Your Alpha Vantage API key
+ALPHA_VANTAGE_KEY = "8WFCXY8TJTSQHSDA"
+ts = TimeSeries(key=ALPHA_VANTAGE_KEY, output_format='pandas')
 
-@app.route("/stock", methods=["GET"])
+@app.route("/get_stock", methods=["POST"])
 def get_stock():
-# Get ticker symbol from query parameter
-symbol = request.args.get("symbol")
+data = request.get_json()
+symbol = data.get("symbol")
+
 if not symbol:
-return jsonify({"error": "Please provide a stock symbol, e.g., ?symbol=AAPL"}), 400
+return jsonify({"error": "No symbol provided"}), 400
 
 try:
-stock = yf.Ticker(symbol)
-data = stock.history(period="1d")
-latest = data.iloc[-1]
+# Fetch intraday data (latest available)
+stock_data, meta_data = ts.get_quote_endpoint(symbol)
+stock_data = stock_data.to_dict()
 
-result = {
+current_price = stock_data['05. price']
+open_price = stock_data['02. open']
+high_price = stock_data['03. high']
+low_price = stock_data['04. low']
+previous_close = stock_data['08. previous close']
+change_percent = stock_data['10. change percent']
+
+human_readable = f"{symbol.upper()} - Current Price: ${current_price} (Change: {change_percent})\nOpen: ${open_price} High: ${high_price} Low: ${low_price} Previous Close: ${previous_close}"
+
+response = {
 "symbol": symbol.upper(),
-"company_name": stock.info.get("longName", symbol.upper()),
-"current_price": float(latest['Close']),
-"open": float(latest['Open']),
-"high": float(latest['High']),
-"low": float(latest['Low']),
-"previous_close": float(latest['Close']),
-"change_percent": round(((latest['Close'] - latest['Open']) / latest['Open']) * 100, 2),
-"volume": int(latest['Volume']),
-"market_cap": stock.info.get("marketCap", None),
-"fifty_two_week_high": stock.info.get("fiftyTwoWeekHigh", None),
-"fifty_two_week_low": stock.info.get("fiftyTwoWeekLow", None),
-"timestamp": datetime.utcnow().isoformat() + "Z"
+"current_price": current_price,
+"open": open_price,
+"high": high_price,
+"low": low_price,
+"previous_close": previous_close,
+"change_percent": change_percent,
+"human_readable": human_readable
 }
 
-# Human-readable summary
-human_summary = f"{result['symbol']} – {result['company_name']}\n" \
-f"Current price: ${result['current_price']} ({result['change_percent']}%)\n" \
-f"Day range: ${result['low']} – ${result['high']}\n" \
-f"Market cap: {result['market_cap']}\n" \
-f"Updated: {result['timestamp']}"
-
-return jsonify({
-"json": result,
-"human_readable": human_summary
-})
+return jsonify(response)
 
 except Exception as e:
 return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+app.run(host="0.0.0.0", port=8080)
