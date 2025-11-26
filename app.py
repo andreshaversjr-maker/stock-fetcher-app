@@ -4,22 +4,39 @@ import os
 
 app = Flask(__name__)
 
-ALPHA_KEY = "8WFCXY8TJTSQHSDA"
+ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
+
+ts = TimeSeries(
+key=ALPHA_VANTAGE_API_KEY,
+output_format="json"
+)
+
+@app.route("/", methods=["GET"])
+def health_check():
+return jsonify({"status": "Stock Fetcher running"}), 200
 
 @app.route("/get_stock", methods=["POST"])
-def get_stock_data():
+def get_stock():
+try:
 data = request.get_json()
 symbol = data.get("symbol")
 
-ts = TimeSeries(key=ALPHA_KEY, output_format='json')
-stock_data, meta_data = ts.get_quote_endpoint(symbol)
-current_price = float(stock_data['05. price'])
+if not symbol:
+return jsonify({"error": "Symbol is required"}), 400
 
-response_json = {
-"symbol": symbol,
-"current_price": current_price,
-"raw_data": stock_data
-}
+stock_data, meta = ts.get_quote_endpoint(symbol)
 
-human_readable = f"{symbol} current price: ${current_price:.2f}"
+price = float(stock_data["05. price"])
+last_updated = meta.get("3. Last Refreshed")
 
+return jsonify({
+"symbol": symbol.upper(),
+"source": "Alpha Vantage",
+"current_price": price,
+"last_updated": last_updated,
+"currency": "USD",
+"human_readable": f"{symbol.upper()} current price: ${price:.2f} (Alpha Vantage)"
+})
+
+except Exception as e:
+return jsonify({"error": str(e)}), 500
